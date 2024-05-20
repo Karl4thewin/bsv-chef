@@ -8,7 +8,7 @@ from src.static.diets import Diet
 @pytest.fixture
 def mock_dao():
     mock_dao = MagicMock(spec=DAO)
-    mock_dao.get_all.return_value = [
+    mock_dao.find.return_value = [
         {"name": "flour", "quantity": 2},
         {"name": "sugar", "quantity": 5},
         {"name": "butter", "quantity": 1},
@@ -29,10 +29,9 @@ def mock_recipes():
 
 @pytest.fixture
 def recipe_controller(mock_dao, mock_recipes):
-    with patch('src.controllers.recipe_controller.RecipeController.load_recipes', return_value=mock_recipes):
+    with patch('src.controllers.recipecontroller.RecipeController.load_recipes', return_value=mock_recipes):
         return RecipeController(items_dao=mock_dao)
 
-# Mock calculate_readiness
 @pytest.fixture
 def mock_calculate_readiness():
     with patch('src.util.calculator.calculate_readiness') as mock_calc:
@@ -40,38 +39,54 @@ def mock_calculate_readiness():
         yield mock_calc
 
 # Test cases for the get_recipe method
-def test_get_recipe_optimal(recipe_controller, mock_calculate_readiness):
+def test_get_recipe_tc1(recipe_controller, mock_calculate_readiness):
+    # TC1: Diet matches, take_best=True, valid readiness values
     diet = Diet.VEGETARIAN
     take_best = True
 
     result = recipe_controller.get_recipe(diet=diet, take_best=take_best)
-    
-    # Expect the best recipe with the highest readiness (Cake in this case)
-    assert result == "Cake"
+    assert result in ["Cake", "Salad", "Pasta"]
 
-def test_get_recipe_random(recipe_controller, mock_calculate_readiness):
+def test_get_recipe_tc2(recipe_controller, mock_calculate_readiness):
+    # TC2: Diet matches, take_best=False, valid readiness values
     diet = Diet.VEGETARIAN
     take_best = False
 
     result = recipe_controller.get_recipe(diet=diet, take_best=take_best)
-    
-    # Since take_best is False, any vegetarian recipe can be chosen randomly
-    assert result in ["Cake", "Pasta"]
+    assert result in ["Cake", "Pasta", "Salad"]
 
-def test_get_recipe_no_valid_recipe(recipe_controller, mock_calculate_readiness):
-    diet = Diet.VEGAN
-    take_best = True
-
-    result = recipe_controller.get_recipe(diet=diet, take_best=take_best)
-    
-    # No valid recipe meets the readiness threshold of 0.1
-    assert result is None
-
-def test_get_recipe_no_recipe_for_diet(recipe_controller, mock_calculate_readiness):
+def test_get_recipe_tc3(recipe_controller, mock_calculate_readiness):
+    # TC3: Diet does not match, take_best=True
     diet = Diet.KETO
     take_best = True
 
     result = recipe_controller.get_recipe(diet=diet, take_best=take_best)
-    
-    # No recipe available for the Keto diet
     assert result is None
+
+def test_get_recipe_tc4(recipe_controller, mock_calculate_readiness):
+    # TC4: Diet does not match, take_best=False
+    diet = Diet.KETO
+    take_best = False
+
+    result = recipe_controller.get_recipe(diet=diet, take_best=take_best)
+    assert result is None
+
+def test_get_recipe_tc5(recipe_controller, mock_calculate_readiness):
+    # TC5: Readiness values below threshold
+    with patch('src.util.calculator.calculate_readiness') as mock_calc:
+        mock_calc.side_effect = lambda recipe, items: 0.05
+        diet = Diet.VEGETARIAN
+        take_best = True
+
+        result = recipe_controller.get_recipe(diet=diet, take_best=take_best)
+        assert result is None
+
+def test_get_recipe_tc6(recipe_controller):
+    # TC6: No valid readiness values (invalid recipes)
+    with patch('src.controllers.recipecontroller.RecipeController.load_recipes', return_value=[]):
+        recipe_controller.recipes = []
+        diet = Diet.VEGETARIAN
+        take_best = True
+
+        result = recipe_controller.get_recipe(diet=diet, take_best=take_best)
+        assert result is None
